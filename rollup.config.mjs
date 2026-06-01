@@ -12,12 +12,10 @@ export default [
       {
         file: "dist/cjs/index.cjs",
         format: "cjs",
-        sourcemap: true,
       },
       {
         file: "dist/esm/index.js",
         format: "esm",
-        sourcemap: true,
       },
     ],
     external: ["ws"],
@@ -39,13 +37,11 @@ export default [
       {
         file: "dist/browser/index.js",
         format: "esm",
-        sourcemap: true,
       },
       {
         file: "dist/iife/index.js",
         format: "iife",
-        name: "wsLib",
-        sourcemap: true,
+        name: "AsyncWS",
       },
     ],
     plugins: [

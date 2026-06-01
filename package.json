@@ -1,36 +1,61 @@
 {
   "name": "async-ws",
   "version": "0.1.0",
-  "description": "Cross-platform imperative WebSocket client for browser and Node.js",
-  "author": "",
+  "description": "Promise-first WebSocket client for Node.js and browsers",
+  "author": "Gerardo Lecaros",
   "license": "MIT",
   "type": "module",
+  "keywords": [
+    "websocket",
+    "ws",
+    "async",
+    "promise",
+    "browser",
+    "node",
+    "client",
+    "async-iterator",
+    "cross-platform"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/glecaros/async-ws.git"
+  },
+  "homepage": "https://github.com/glecaros/async-ws#readme",
+  "bugs": {
+    "url": "https://github.com/glecaros/async-ws/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
   "main": "./dist/cjs/index.cjs",
+  "module": "./dist/esm/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "exports": {
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
-      "browser": {
-        "import": "./dist/browser/index.js",
-        "default": "./dist/iife/index.js"
-      },
-      "import": {
-        "default": "./dist/esm/index.js"
-      },
-      "require": {
-        "default": "./dist/cjs/index.cjs"
-      }
+      "browser": "./dist/browser/index.js",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.cjs",
+      "default": "./dist/esm/index.js"
+    },
+    "./iife": {
+      "default": "./dist/iife/index.js"
     }
   },
   "scripts": {
     "test": "vitest run",
     "test:browser": "xvfb-run vitest run --config vitest.config.browser.mts",
     "build": "rollup -c",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run clean && npm run typecheck && npm run build && npm test"
   },
   "dependencies": {
     "ws": "^8.18.0"
