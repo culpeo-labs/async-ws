@@ -24,8 +24,14 @@ export function socketSend(
   if (socket.readyState !== _WS.OPEN) {
     return Promise.reject(new Error("WebSocket is not open"));
   }
-  socket.send(data);
-  return Promise.resolve();
+  try {
+    socket.send(data);
+    return Promise.resolve();
+  } catch (err) {
+    return Promise.reject(
+      err instanceof Error ? err : new Error(String(err)),
+    );
+  }
 }
 
 export function getReadyState(socket: Socket): number {
