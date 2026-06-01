@@ -1,5 +1,5 @@
 {
-  "name": "ws-lib",
+  "name": "async-ws",
   "version": "0.1.0",
   "description": "Cross-platform imperative WebSocket client for browser and Node.js",
   "author": "",
