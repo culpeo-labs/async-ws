@@ -1,5 +1,6 @@
 import type {
   ConnectOptions,
+  ClientOptions,
   WebSocketMessage,
   WebSocketCloseInfo,
   WebSocketState,
@@ -37,6 +38,11 @@ export class WebSocketClient {
   private terminalError: Error | null = null;
   private closeInfo: WebSocketCloseInfo | null = null;
   private removeListeners: (() => void) | null = null;
+  private readonly maxBufferSize: number;
+
+  constructor(options?: ClientOptions) {
+    this.maxBufferSize = options?.maxBufferSize ?? 0;
+  }
 
   /** Current connection state. */
   get readyState(): WebSocketState {
@@ -119,16 +125,13 @@ export class WebSocketClient {
           this.terminalError = error;
           if (!settled) {
             settled = true;
-            this.state = "errored";
-            this.cleanup();
             reject(error);
           }
-          // If already open, mark errored and reject waiters
-          if (this.state === "open" || this.state === "connecting") {
-            this.state = "errored";
-            this.cleanup();
-            this.rejectAllWaiters(error);
-          }
+          // Reject any pending receive() waiters immediately
+          this.rejectAllWaiters(error);
+          // Don't call cleanup() here — per spec, a close event always
+          // follows an error event. Let onClose handle state transition
+          // and listener removal.
         },
       );
     });
@@ -185,7 +188,7 @@ export class WebSocketClient {
    * Resolves when the close handshake completes.
    */
   close(code?: number, reason?: string): Promise<void> {
-    if (this.state === "closed" || this.state === "idle") {
+    if (this.state === "closed" || this.state === "idle" || this.state === "errored") {
       return Promise.resolve();
     }
 
@@ -194,31 +197,35 @@ export class WebSocketClient {
     }
 
     if (this.state === "closing") {
-      // Already closing — return a promise that resolves when closed
+      // Already closing — wait for the close event via a one-shot listener
       return new Promise<void>((resolve) => {
-        const check = () => {
-          if (this.state === "closed") {
-            resolve();
-          } else {
-            setTimeout(check, 10);
-          }
-        };
-        check();
+        if (this.socket) {
+          this.socket.addEventListener("close", () => resolve(), { once: true });
+        } else {
+          resolve();
+        }
       });
     }
 
     this.state = "closing";
 
+    // Validate close code before calling socketClose to avoid leaving the
+    // socket in a corrupt state (ws library sets readyState to CLOSING
+    // before throwing on invalid codes, making the socket unrecoverable).
+    if (code !== undefined) {
+      if (code !== 1000 && (code < 3000 || code > 4999)) {
+        this.state = "open";
+        return Promise.reject(
+          new Error(
+            `Invalid close code: ${code}. Must be 1000 or in range 3000-4999.`,
+          ),
+        );
+      }
+    }
+
     return new Promise<void>((resolve) => {
-      const origRemove = this.removeListeners;
-
-      // Attach a one-shot close listener
-      const onCloseForShutdown = () => {
-        resolve();
-      };
-
       if (this.socket) {
-        this.socket.addEventListener("close", onCloseForShutdown);
+        this.socket.addEventListener("close", () => resolve(), { once: true });
       }
 
       socketClose(this.socket!, code, reason);
@@ -253,6 +260,9 @@ export class WebSocketClient {
       const waiter = this.waiters.shift()!;
       waiter.resolve(msg);
     } else {
+      if (this.maxBufferSize > 0 && this.buffer.length >= this.maxBufferSize) {
+        this.buffer.shift(); // drop oldest
+      }
       this.buffer.push(msg);
     }
   }

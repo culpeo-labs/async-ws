@@ -24,6 +24,16 @@ export interface WebSocketCloseInfo {
   wasClean: boolean;
 }
 
+/** Options for the WebSocketClient constructor. */
+export interface ClientOptions {
+  /**
+   * Maximum number of messages to buffer before a consumer calls `receive()`.
+   * When the buffer is full, the oldest message is dropped.
+   * Set to 0 for unlimited. Defaults to 0 (unlimited).
+   */
+  maxBufferSize?: number;
+}
+
 export type WebSocketState =
   | "idle"
   | "connecting"
