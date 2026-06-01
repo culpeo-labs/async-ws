@@ -305,4 +305,160 @@ describe("WebSocketClient", () => {
       await client.close();
     });
   });
+
+  describe("state guards", () => {
+    it("rejects connect when already connecting", async () => {
+      await startServer();
+      const p = client.connect(`ws://localhost:${port}`);
+      await expect(
+        client.connect(`ws://localhost:${port}`),
+      ).rejects.toThrow(/Cannot connect/);
+      await p;
+    });
+
+    it("rejects connect when already open", async () => {
+      await startServer();
+      await client.connect(`ws://localhost:${port}`);
+      await expect(
+        client.connect(`ws://localhost:${port}`),
+      ).rejects.toThrow(/Cannot connect/);
+    });
+
+    it("rejects send during connecting", async () => {
+      await startServer();
+      const p = client.connect(`ws://localhost:${port}`);
+      await expect(client.send("hi")).rejects.toThrow(/Cannot send/);
+      await p;
+    });
+
+    it("rejects receive during connecting", async () => {
+      await startServer();
+      const p = client.connect(`ws://localhost:${port}`);
+      await expect(client.receive()).rejects.toThrow(/Cannot receive/);
+      await p;
+    });
+  });
+
+  describe("concurrent receive", () => {
+    it("multiple receive() calls resolve in order", async () => {
+      await startServer((ws) => {
+        setTimeout(() => {
+          ws.send("first");
+          ws.send("second");
+          ws.send("third");
+        }, 30);
+      });
+
+      await client.connect(`ws://localhost:${port}`);
+
+      // Queue up multiple receive() calls before messages arrive
+      const [m1, m2, m3] = await Promise.all([
+        client.receive(),
+        client.receive(),
+        client.receive(),
+      ]);
+
+      expect(m1.data).toBe("first");
+      expect(m2.data).toBe("second");
+      expect(m3.data).toBe("third");
+    });
+
+    it("pending receives all reject on close", async () => {
+      await startServer((ws) => {
+        setTimeout(() => ws.close(1000, "bye"), 30);
+      });
+
+      await client.connect(`ws://localhost:${port}`);
+
+      const results = await Promise.allSettled([
+        client.receive(),
+        client.receive(),
+        client.receive(),
+      ]);
+
+      for (const result of results) {
+        expect(result.status).toBe("rejected");
+      }
+    });
+  });
+
+  describe("send data types", () => {
+    it("sends ArrayBuffer", async () => {
+      await startServer((ws) => {
+        ws.on("message", (data, isBinary) => {
+          ws.send(isBinary ? "binary" : "text");
+        });
+      });
+
+      await client.connect(`ws://localhost:${port}`);
+      await client.send(new Uint8Array([1, 2, 3]).buffer);
+      const msg = await client.receive();
+      expect(msg.data).toBe("binary");
+    });
+
+    it("sends ArrayBufferView", async () => {
+      await startServer((ws) => {
+        ws.on("message", (data, isBinary) => {
+          ws.send(isBinary ? "binary" : "text");
+        });
+      });
+
+      await client.connect(`ws://localhost:${port}`);
+      await client.send(new Uint8Array([4, 5, 6]));
+      const msg = await client.receive();
+      expect(msg.data).toBe("binary");
+    });
+
+    it("sends empty string", async () => {
+      await startServer((ws) => {
+        ws.on("message", (data) => ws.send("got:" + data.toString()));
+      });
+
+      await client.connect(`ws://localhost:${port}`);
+      await client.send("");
+      const msg = await client.receive();
+      expect(msg.data).toBe("got:");
+    });
+  });
+
+  describe("close with valid custom codes", () => {
+    it("accepts close code 1000", async () => {
+      await startServer();
+      await client.connect(`ws://localhost:${port}`);
+      await client.close(1000, "normal");
+      expect(client.readyState).toBe("closed");
+    });
+
+    it("accepts close code 3000", async () => {
+      await startServer();
+      await client.connect(`ws://localhost:${port}`);
+      await client.close(3000, "custom");
+      expect(client.readyState).toBe("closed");
+    });
+
+    it("accepts close code 4999", async () => {
+      await startServer();
+      await client.connect(`ws://localhost:${port}`);
+      await client.close(4999);
+      expect(client.readyState).toBe("closed");
+    });
+
+    it("rejects close code 1001", async () => {
+      await startServer();
+      await client.connect(`ws://localhost:${port}`);
+      await expect(client.close(1001)).rejects.toThrow(/Invalid close code/);
+    });
+
+    it("rejects close code 2999", async () => {
+      await startServer();
+      await client.connect(`ws://localhost:${port}`);
+      await expect(client.close(2999)).rejects.toThrow(/Invalid close code/);
+    });
+
+    it("rejects close code 5000", async () => {
+      await startServer();
+      await client.connect(`ws://localhost:${port}`);
+      await expect(client.close(5000)).rejects.toThrow(/Invalid close code/);
+    });
+  });
 });
