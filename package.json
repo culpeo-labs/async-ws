@@ -67,7 +67,7 @@
     "@changesets/cli": "^2.31.0",
     "@rollup/plugin-alias": "^5.1.1",
     "@rollup/plugin-commonjs": "^28.0.0",
-    "@rollup/plugin-node-resolve": "^15.3.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-typescript": "^12.1.0",
     "@types/ws": "^8.5.12",
     "@vitest/browser-playwright": "^4.1.8",
