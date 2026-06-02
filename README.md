@@ -1,12 +1,12 @@
-# async-ws
+# @culpeo/async-ws
 
 > Promise-first WebSocket client for Node.js and browsers.
 >
-> [![npm version](https://img.shields.io/npm/v/async-ws)](https://www.npmjs.com/package/async-ws)
-> [![license](https://img.shields.io/npm/l/async-ws)](./LICENSE)
-> [![bundle size](https://img.shields.io/bundlephobia/minzip/async-ws)](https://bundlephobia.com/package/async-ws)
+> [![npm version](https://img.shields.io/npm/v/%40culpeo/async-ws)](https://www.npmjs.com/package/@culpeo/async-ws)
+> [![license](https://img.shields.io/npm/l/%40culpeo/async-ws)](./LICENSE)
+> [![bundle size](https://img.shields.io/bundlephobia/minzip/%40culpeo/async-ws)](https://bundlephobia.com/package/@culpeo/async-ws)
 
-`async-ws` is a cross-platform WebSocket client that turns the event-driven WebSocket API into a small, imperative, promise-based interface.
+`@culpeo/async-ws` is a cross-platform WebSocket client that turns the event-driven WebSocket API into a small, imperative, promise-based interface.
 
 ## Features
 
@@ -23,21 +23,21 @@
 ## Install
 
 ```bash
-npm install async-ws
+npm install @culpeo/async-ws
 ```
 
 ```bash
-yarn add async-ws
+yarn add @culpeo/async-ws
 ```
 
 ```bash
-pnpm add async-ws
+pnpm add @culpeo/async-ws
 ```
 
 ## Quick Start
 
 ```ts
-import { WebSocketClient } from "async-ws";
+import { WebSocketClient } from "@culpeo/async-ws";
 
 const client = new WebSocketClient();
 
@@ -236,7 +236,7 @@ Represents the client lifecycle state.
 
 ## Browser vs Node
 
-`async-ws` ships one API for both environments:
+`@culpeo/async-ws` ships one API for both environments:
 
 - **Node.js build** uses the `ws` package internally
 - **Browser build** uses the native `WebSocket` implementation
@@ -246,7 +246,7 @@ This is handled at build time with Rollup. The browser bundle aliases the Node a
 In practice, that means you write this once:
 
 ```ts
-import { WebSocketClient } from "async-ws";
+import { WebSocketClient } from "@culpeo/async-ws";
 ```
 
 …and the appropriate adapter is selected by the published package exports and browser build.
@@ -254,7 +254,7 @@ import { WebSocketClient } from "async-ws";
 ## Async Iterator
 
 ```ts
-import { WebSocketClient } from "async-ws";
+import { WebSocketClient } from "@culpeo/async-ws";
 
 const client = new WebSocketClient();
 await client.connect("wss://example.com/ws");
