@@ -4,6 +4,9 @@
   "description": "Promise-first WebSocket client for Node.js and browsers",
   "author": "Gerardo Lecaros",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "keywords": [
     "websocket",
