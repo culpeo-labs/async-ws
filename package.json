@@ -1,5 +1,5 @@
 {
-  "name": "async-ws",
+  "name": "@culpeo/async-ws",
   "version": "0.1.0",
   "description": "Promise-first WebSocket client for Node.js and browsers",
   "author": "Gerardo Lecaros",
@@ -18,11 +18,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/glecaros/async-ws.git"
+    "url": "git+https://github.com/culpeo-labs/async-ws.git"
   },
-  "homepage": "https://github.com/glecaros/async-ws#readme",
+  "homepage": "https://github.com/culpeo-labs/async-ws#readme",
   "bugs": {
-    "url": "https://github.com/glecaros/async-ws/issues"
+    "url": "https://github.com/culpeo-labs/async-ws/issues"
   },
   "engines": {
     "node": ">=18"
