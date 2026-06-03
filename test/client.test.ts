@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { WebSocketServer, WebSocket as WS } from "ws";
 import { WebSocketClient } from "../src/index";
+import { HangingServer } from "./helpers/hanging-server";
 
 let wss: WebSocketServer;
 let port: number;
 
-function startServer(
-  onConnection?: (ws: WS) => void,
-): Promise<void> {
+function startServer(onConnection?: (ws: WS) => void): Promise<void> {
   return new Promise((resolve) => {
     wss = new WebSocketServer({ port: 0 });
     wss.on("listening", () => {
@@ -32,6 +31,7 @@ function stopServer(): Promise<void> {
 
 describe("WebSocketClient", () => {
   let client: WebSocketClient;
+  const hangingServer = new HangingServer();
 
   beforeEach(() => {
     client = new WebSocketClient();
@@ -42,6 +42,7 @@ describe("WebSocketClient", () => {
       await client.close();
     } catch {}
     await stopServer();
+    await hangingServer.stop();
   });
 
   describe("connect / send / receive basics", () => {
@@ -165,9 +166,7 @@ describe("WebSocketClient", () => {
     });
 
     it("rejects connect on unreachable port", async () => {
-      await expect(
-        client.connect("ws://localhost:1"),
-      ).rejects.toThrow();
+      await expect(client.connect("ws://localhost:1")).rejects.toThrow();
     });
 
     it("rejects send when not open", async () => {
@@ -310,18 +309,18 @@ describe("WebSocketClient", () => {
     it("rejects connect when already connecting", async () => {
       await startServer();
       const p = client.connect(`ws://localhost:${port}`);
-      await expect(
-        client.connect(`ws://localhost:${port}`),
-      ).rejects.toThrow(/Cannot connect/);
+      await expect(client.connect(`ws://localhost:${port}`)).rejects.toThrow(
+        /Cannot connect/,
+      );
       await p;
     });
 
     it("rejects connect when already open", async () => {
       await startServer();
       await client.connect(`ws://localhost:${port}`);
-      await expect(
-        client.connect(`ws://localhost:${port}`),
-      ).rejects.toThrow(/Cannot connect/);
+      await expect(client.connect(`ws://localhost:${port}`)).rejects.toThrow(
+        /Cannot connect/,
+      );
     });
 
     it("rejects send during connecting", async () => {
@@ -459,6 +458,213 @@ describe("WebSocketClient", () => {
       await startServer();
       await client.connect(`ws://localhost:${port}`);
       await expect(client.close(5000)).rejects.toThrow(/Invalid close code/);
+    });
+  });
+
+  describe("connect timeout", () => {
+    it("rejects when connection takes too long", async () => {
+      const hangingPort = await hangingServer.start();
+      const client2 = new WebSocketClient();
+      await expect(
+        client2.connect(`ws://localhost:${hangingPort}`, { timeout: 100 }),
+      ).rejects.toThrow(/timed out/);
+    });
+
+    it("succeeds when connection is faster than timeout", async () => {
+      await startServer();
+      await client.connect(`ws://localhost:${port}`, { timeout: 5000 });
+      expect(client.readyState).toBe("open");
+    });
+
+    it("rejects invalid timeout", async () => {
+      await expect(
+        client.connect("ws://localhost:1", { timeout: 0 }),
+      ).rejects.toThrow(/timeout must be greater than 0/);
+      await expect(
+        client.connect("ws://localhost:1", { timeout: -100 }),
+      ).rejects.toThrow(/timeout must be greater than 0/);
+    });
+
+    it("allows reconnect after timeout", async () => {
+      const hangingPort = await hangingServer.start();
+      await expect(
+        client.connect(`ws://localhost:${hangingPort}`, { timeout: 50 }),
+      ).rejects.toThrow(/timed out/);
+
+      // Reconnect to a real server on the same client
+      await startServer();
+      await client.connect(`ws://localhost:${port}`);
+      expect(client.readyState).toBe("open");
+
+      // Verify the connection is fully functional
+      await new Promise((r) => setTimeout(r, 50));
+      expect(client.readyState).toBe("open");
+    });
+  });
+
+  describe("abort signal", () => {
+    it("rejects with already-aborted signal", async () => {
+      const controller = new AbortController();
+      controller.abort();
+      await expect(
+        client.connect("ws://localhost:1", { signal: controller.signal }),
+      ).rejects.toThrow(/aborted/);
+    });
+
+    it("rejects when signal is aborted during connection", async () => {
+      const hangingPort = await hangingServer.start();
+      const controller = new AbortController();
+      const client2 = new WebSocketClient();
+      const p = client2.connect(`ws://localhost:${hangingPort}`, {
+        signal: controller.signal,
+      });
+      setTimeout(() => controller.abort(), 50);
+      await expect(p).rejects.toThrow(/aborted/);
+    });
+
+    it("does not abort when signal is not triggered", async () => {
+      await startServer();
+      const controller = new AbortController();
+      await client.connect(`ws://localhost:${port}`, {
+        signal: controller.signal,
+      });
+      expect(client.readyState).toBe("open");
+    });
+
+    it("allows reconnect after abort", async () => {
+      const hangingPort = await hangingServer.start();
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 30);
+      await expect(
+        client.connect(`ws://localhost:${hangingPort}`, {
+          signal: controller.signal,
+        }),
+      ).rejects.toThrow(/aborted/);
+
+      // Reconnect to a real server
+      await startServer();
+      await client.connect(`ws://localhost:${port}`);
+      expect(client.readyState).toBe("open");
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(client.readyState).toBe("open");
+    });
+  });
+
+  describe("exposed properties", () => {
+    it("returns empty values when not connected", () => {
+      expect(client.protocol).toBe("");
+      expect(client.url).toBe("");
+      expect(client.bufferedAmount).toBe(0);
+      expect(client.extensions).toBe("");
+    });
+
+    it("returns url and protocol when connected", async () => {
+      await startServer();
+      await client.connect(`ws://localhost:${port}`);
+      expect(client.url).toContain(`ws://localhost:${port}`);
+      expect(typeof client.protocol).toBe("string");
+      expect(typeof client.bufferedAmount).toBe("number");
+      expect(typeof client.extensions).toBe("string");
+    });
+
+    it("returns empty values after close", async () => {
+      await startServer();
+      await client.connect(`ws://localhost:${port}`);
+      await client.close();
+      expect(client.protocol).toBe("");
+      expect(client.url).toBe("");
+      expect(client.bufferedAmount).toBe(0);
+      expect(client.extensions).toBe("");
+    });
+
+    it("returns negotiated subprotocol", async () => {
+      wss = new WebSocketServer({
+        port: 0,
+        handleProtocols: (protocols) => {
+          if (protocols.has("chat")) return "chat";
+          return false;
+        },
+      });
+      await new Promise<void>((resolve) => {
+        wss.on("listening", () => {
+          port = (wss.address() as { port: number }).port;
+          resolve();
+        });
+      });
+
+      await client.connect(`ws://localhost:${port}`, {
+        protocols: ["chat", "json"],
+      });
+      expect(client.protocol).toBe("chat");
+    });
+  });
+
+  describe("keepAlive", () => {
+    it("throws on invalid keepAlive interval", () => {
+      expect(() => new WebSocketClient({ keepAlive: { interval: 0 } })).toThrow(
+        /interval must be greater than 0/,
+      );
+      expect(
+        () => new WebSocketClient({ keepAlive: { interval: -100 } }),
+      ).toThrow(/interval must be greater than 0/);
+    });
+
+    it("throws on invalid keepAlive timeout", () => {
+      expect(
+        () => new WebSocketClient({ keepAlive: { interval: 100, timeout: 0 } }),
+      ).toThrow(/timeout must be greater than 0/);
+      expect(
+        () =>
+          new WebSocketClient({ keepAlive: { interval: 100, timeout: -50 } }),
+      ).toThrow(/timeout must be greater than 0/);
+    });
+
+    it("keeps connection alive with ping/pong", async () => {
+      await startServer();
+      const keepAliveClient = new WebSocketClient({
+        keepAlive: { interval: 50, timeout: 200 },
+      });
+
+      await keepAliveClient.connect(`ws://localhost:${port}`);
+      expect(keepAliveClient.readyState).toBe("open");
+
+      // Wait long enough for multiple pings to have been sent
+      await new Promise((r) => setTimeout(r, 180));
+      expect(keepAliveClient.readyState).toBe("open");
+
+      await keepAliveClient.close();
+    });
+
+    it("terminates on pong timeout", async () => {
+      // Create a server that doesn't respond to pings
+      await startServer((ws) => {
+        (ws as any).pong = () => {};
+      });
+
+      const keepAliveClient = new WebSocketClient({
+        keepAlive: { interval: 30, timeout: 30 },
+      });
+
+      await keepAliveClient.connect(`ws://localhost:${port}`);
+
+      // Wait for the keepalive timeout to fire
+      await new Promise((r) => setTimeout(r, 200));
+      expect(keepAliveClient.readyState).toBe("closed");
+    });
+
+    it("cleans up timers on close", async () => {
+      await startServer();
+      const keepAliveClient = new WebSocketClient({
+        keepAlive: { interval: 50 },
+      });
+
+      await keepAliveClient.connect(`ws://localhost:${port}`);
+      await keepAliveClient.close();
+      expect(keepAliveClient.readyState).toBe("closed");
+
+      // No lingering timers should cause issues
+      await new Promise((r) => setTimeout(r, 100));
     });
   });
 });

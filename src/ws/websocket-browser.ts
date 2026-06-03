@@ -28,9 +28,7 @@ export function socketSend(
     socket.send(data);
     return Promise.resolve();
   } catch (err) {
-    return Promise.reject(
-      err instanceof Error ? err : new Error(String(err)),
-    );
+    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
   }
 }
 
@@ -78,5 +76,22 @@ export function socketClose(
 ): void {
   socket.close(code, reason);
 }
+
+export function socketTerminate(socket: Socket): void {
+  socket.close();
+}
+
+export function socketPing(_socket: Socket): void {
+  throw new Error("Ping is not supported in browsers.");
+}
+
+export function attachPongListener(
+  _socket: Socket,
+  _onPong: () => void,
+): () => void {
+  return () => {};
+}
+
+export const supportsPing = false;
 
 export const OPEN = _WS.OPEN;

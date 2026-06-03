@@ -5,7 +5,6 @@
 ### Minor Changes
 
 - 9453a7c: Initial release
-
   - Cross-platform WebSocket client for Node.js and browsers
   - Promise-based `connect()`, `send()`, `receive()`, `close()` API
   - Async iteration with `for await...of`

@@ -102,4 +102,23 @@ export function socketClose(
   socket.close(code, reason);
 }
 
+export function socketTerminate(socket: Socket): void {
+  socket.terminate();
+}
+
+export function socketPing(socket: Socket): void {
+  socket.ping();
+}
+
+export function attachPongListener(
+  socket: Socket,
+  onPong: () => void,
+): () => void {
+  const handler = () => onPong();
+  socket.on("pong", handler);
+  return () => socket.off("pong", handler);
+}
+
+export const supportsPing = true;
+
 export const OPEN = WS.OPEN;
