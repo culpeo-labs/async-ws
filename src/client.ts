@@ -9,6 +9,10 @@ import {
   createWebSocket,
   socketSend,
   socketClose,
+  socketTerminate,
+  socketPing,
+  attachPongListener,
+  supportsPing,
   setBinaryType,
   attachListeners,
   OPEN,
@@ -38,10 +42,26 @@ export class WebSocketClient {
   private terminalError: Error | null = null;
   private closeInfo: WebSocketCloseInfo | null = null;
   private removeListeners: (() => void) | null = null;
+  private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+  private pongTimer: ReturnType<typeof setTimeout> | null = null;
+  private removePongListener: (() => void) | null = null;
   private readonly maxBufferSize: number;
+  private readonly keepAliveConfig: ClientOptions["keepAlive"];
 
   constructor(options?: ClientOptions) {
     this.maxBufferSize = options?.maxBufferSize ?? 0;
+    if (options?.keepAlive) {
+      if (!supportsPing) {
+        throw new Error(
+          "keepAlive is not supported in browsers. " +
+          "The browser handles WebSocket ping/pong at the protocol level automatically.",
+        );
+      }
+      if (options.keepAlive.interval <= 0) {
+        throw new Error("keepAlive.interval must be greater than 0.");
+      }
+      this.keepAliveConfig = options.keepAlive;
+    }
   }
 
   /** Current connection state. */
@@ -54,6 +74,26 @@ export class WebSocketClient {
     return this.closeInfo;
   }
 
+  /** The negotiated subprotocol, or empty string if none. */
+  get protocol(): string {
+    return this.socket?.protocol ?? "";
+  }
+
+  /** The URL of the WebSocket connection. */
+  get url(): string {
+    return this.socket?.url ?? "";
+  }
+
+  /** The number of bytes of data queued for sending. */
+  get bufferedAmount(): number {
+    return this.socket?.bufferedAmount ?? 0;
+  }
+
+  /** The extensions negotiated by the server. */
+  get extensions(): string {
+    return this.socket?.extensions ?? "";
+  }
+
   /**
    * Connect to a WebSocket server.
    * Resolves when the connection is open. Rejects on error.
@@ -63,6 +103,14 @@ export class WebSocketClient {
       return Promise.reject(
         new Error(`Cannot connect: client is in "${this.state}" state`),
       );
+    }
+
+    if (options?.timeout !== undefined && options.timeout <= 0) {
+      return Promise.reject(new Error("timeout must be greater than 0."));
+    }
+
+    if (options?.signal?.aborted) {
+      return Promise.reject(new Error("Connection aborted."));
     }
 
     this.reset();
@@ -80,16 +128,64 @@ export class WebSocketClient {
       }
 
       let settled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        if (options?.signal) {
+          options.signal.removeEventListener("abort", onAbort);
+        }
+        fn();
+      };
+
+      const onAbort = () => {
+        settle(() => {
+          this.state = "closed";
+          this.terminalError = new Error("Connection aborted.");
+          if (this.socket) {
+            socketTerminate(this.socket);
+          }
+          // Don't call cleanup() here — socketTerminate() emits
+          // error/close asynchronously; let onClose handle cleanup.
+          reject(this.terminalError);
+        });
+      };
+
+      if (options?.timeout !== undefined) {
+        timeoutId = setTimeout(() => {
+          settle(() => {
+            this.state = "closed";
+            this.terminalError = new Error(
+              `Connection timed out after ${options.timeout}ms.`,
+            );
+            if (this.socket) {
+              socketTerminate(this.socket);
+            }
+            // Don't call cleanup() here — socketTerminate() emits
+            // error/close asynchronously; let onClose handle cleanup.
+            reject(this.terminalError);
+          });
+        }, options.timeout);
+      }
+
+      if (options?.signal) {
+        options.signal.addEventListener("abort", onAbort, { once: true });
+      }
 
       this.removeListeners = attachListeners(
         this.socket,
         // onOpen
         () => {
-          if (!settled) {
-            settled = true;
+          settle(() => {
             this.state = "open";
+            this.startKeepAlive();
             resolve();
-          }
+          });
         },
         // onMessage
         (data, binary) => {
@@ -98,18 +194,16 @@ export class WebSocketClient {
         // onClose
         (code, reason, wasClean) => {
           this.closeInfo = { code, reason, wasClean };
-          const prevState = this.state;
           this.state = "closed";
           this.cleanup();
 
-          if (!settled) {
-            settled = true;
+          settle(() => {
             reject(
               new Error(
                 `WebSocket closed before opening (code: ${code}, reason: ${reason})`,
               ),
             );
-          }
+          });
 
           // Only reject pending waiters once buffer is drained
           if (this.buffer.length === 0) {
@@ -123,10 +217,9 @@ export class WebSocketClient {
         // onError
         (error) => {
           this.terminalError = error;
-          if (!settled) {
-            settled = true;
+          settle(() => {
             reject(error);
-          }
+          });
           // Reject any pending receive() waiters immediately
           this.rejectAllWaiters(error);
           // Don't call cleanup() here — per spec, a close event always
@@ -274,7 +367,52 @@ export class WebSocketClient {
     }
   }
 
+  private startKeepAlive(): void {
+    if (!this.keepAliveConfig || !this.socket) return;
+
+    const { interval, timeout } = this.keepAliveConfig;
+    const pongTimeout = timeout ?? interval;
+
+    this.removePongListener = attachPongListener(this.socket, () => {
+      if (this.pongTimer !== null) {
+        clearTimeout(this.pongTimer);
+        this.pongTimer = null;
+      }
+    });
+
+    this.keepAliveTimer = setInterval(() => {
+      if (this.state !== "open" || !this.socket) return;
+
+      socketPing(this.socket);
+
+      this.pongTimer = setTimeout(() => {
+        if (this.state === "open" && this.socket) {
+          this.terminalError = new Error(
+            `Keep-alive timeout: no pong received within ${pongTimeout}ms.`,
+          );
+          socketTerminate(this.socket);
+        }
+      }, pongTimeout);
+    }, interval);
+  }
+
+  private stopKeepAlive(): void {
+    if (this.keepAliveTimer !== null) {
+      clearInterval(this.keepAliveTimer);
+      this.keepAliveTimer = null;
+    }
+    if (this.pongTimer !== null) {
+      clearTimeout(this.pongTimer);
+      this.pongTimer = null;
+    }
+    if (this.removePongListener) {
+      this.removePongListener();
+      this.removePongListener = null;
+    }
+  }
+
   private cleanup(): void {
+    this.stopKeepAlive();
     if (this.removeListeners) {
       this.removeListeners();
       this.removeListeners = null;
@@ -288,5 +426,6 @@ export class WebSocketClient {
     this.terminalError = null;
     this.closeInfo = null;
     this.removeListeners = null;
+    this.stopKeepAlive();
   }
 }

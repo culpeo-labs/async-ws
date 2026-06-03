@@ -79,4 +79,21 @@ export function socketClose(
   socket.close(code, reason);
 }
 
+export function socketTerminate(socket: Socket): void {
+  socket.close();
+}
+
+export function socketPing(_socket: Socket): void {
+  throw new Error("Ping is not supported in browsers.");
+}
+
+export function attachPongListener(
+  _socket: Socket,
+  _onPong: () => void,
+): () => void {
+  return () => {};
+}
+
+export const supportsPing = false;
+
 export const OPEN = _WS.OPEN;

@@ -15,6 +15,9 @@
 - Async iteration support with `for await...of`
 - Message buffering for messages that arrive before `receive()` is called
 - Configurable `maxBufferSize` with oldest-message eviction when full
+- Connect timeout and `AbortSignal` support
+- Keep-alive with automatic ping/pong (Node.js)
+- Exposed WebSocket properties (`protocol`, `url`, `bufferedAmount`, `extensions`)
 - Clean close information via `lastCloseInfo`
 - TypeScript-first with bundled type definitions
 - Binary and text message support
@@ -69,6 +72,9 @@ Creates a new client instance.
   - Maximum number of incoming messages to keep buffered before they are consumed
   - Default: `0` (unlimited)
   - When the limit is reached, the oldest buffered message is dropped
+- `keepAlive?: KeepAliveOptions`
+  - Enables automatic ping/pong keep-alive (Node.js only)
+  - Throws if used in a browser environment
 
 #### Properties
 
@@ -86,6 +92,38 @@ Returns the current client state:
 - `"closing"`
 - `"closed"`
 - `"errored"`
+
+#### `client.protocol`
+
+```ts
+readonly protocol: string
+```
+
+Returns the negotiated subprotocol, or `""` when not connected.
+
+#### `client.url`
+
+```ts
+readonly url: string
+```
+
+Returns the URL of the WebSocket connection, or `""` when not connected.
+
+#### `client.bufferedAmount`
+
+```ts
+readonly bufferedAmount: number
+```
+
+Returns the number of bytes queued for transmission, or `0` when not connected.
+
+#### `client.extensions`
+
+```ts
+readonly extensions: string
+```
+
+Returns the negotiated extensions, or `""` when not connected.
 
 #### `client.lastCloseInfo`
 
@@ -116,6 +154,8 @@ Rejects when:
 
 - `protocols?: string | string[]` — WebSocket subprotocols to request
 - `headers?: Record<string, string>` — custom handshake headers in Node.js
+- `timeout?: number` — connection timeout in milliseconds; rejects if the connection is not established within this time
+- `signal?: AbortSignal` — an abort signal to cancel the connection attempt
 
 > In browsers, passing `headers` throws because the native WebSocket API does not support custom headers.
 
@@ -182,6 +222,8 @@ Behavior:
 interface ConnectOptions {
   protocols?: string | string[];
   headers?: Record<string, string>;
+  timeout?: number;
+  signal?: AbortSignal;
 }
 ```
 
@@ -192,10 +234,23 @@ Connection-time options.
 ```ts
 interface ClientOptions {
   maxBufferSize?: number;
+  keepAlive?: KeepAliveOptions;
 }
 ```
 
 Client-level configuration.
+
+### `KeepAliveOptions`
+
+```ts
+interface KeepAliveOptions {
+  interval: number;
+  timeout?: number;
+}
+```
+
+- `interval` — milliseconds between pings
+- `timeout` — milliseconds to wait for a pong before terminating the connection (default: `interval`)
 
 ### `WebSocketMessage`
 
@@ -276,7 +331,7 @@ This is useful when you want a stream-like consumer loop without manually callin
 
 All core operations are async and communicate failure by rejecting:
 
-- `connect()` rejects on invalid state, connection failure, or early close
+- `connect()` rejects on invalid state, connection failure, early close, timeout, or abort
 - `send()` rejects when called before the socket is open or when the adapter fails to send
 - `receive()` rejects when the client is not in a receivable state and no buffered messages remain
 - `close()` rejects for invalid close codes
@@ -323,6 +378,49 @@ When the buffer is full:
 - the newest message is stored
 
 This makes buffering predictable for bursty message streams while keeping the public API simple.
+
+## Connection Timeout and Abort
+
+Use `timeout` to reject if the connection isn't established within a deadline:
+
+```ts
+await client.connect("wss://example.com/ws", { timeout: 5000 });
+```
+
+Use `signal` to cancel a connection attempt at any time:
+
+```ts
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 3000);
+
+await client.connect("wss://example.com/ws", { signal: controller.signal });
+```
+
+Both can be combined:
+
+```ts
+await client.connect("wss://example.com/ws", {
+  timeout: 10000,
+  signal: controller.signal,
+});
+```
+
+## Keep-Alive (Node.js)
+
+Enable automatic ping/pong to detect dead connections:
+
+```ts
+const client = new WebSocketClient({
+  keepAlive: { interval: 30000, timeout: 5000 },
+});
+
+await client.connect("wss://example.com/ws");
+```
+
+- Sends a ping every `interval` milliseconds
+- If no pong is received within `timeout` milliseconds, the connection is terminated
+- `timeout` defaults to `interval` if omitted
+- **Not available in browsers** — the constructor throws if `keepAlive` is configured in a browser environment
 
 ## Building from Source
 
