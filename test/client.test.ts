@@ -418,6 +418,49 @@ describe("WebSocketClient", () => {
       const msg = await client.receive();
       expect(msg.data).toBe("got:");
     });
+
+    it("sends Int32Array view", async () => {
+      await startServer((ws) => {
+        ws.on("message", (data, isBinary) => {
+          ws.send(isBinary ? "binary" : "text");
+        });
+      });
+
+      await client.connect(`ws://localhost:${port}`);
+      await client.send(new Int32Array([42]));
+      const msg = await client.receive();
+      expect(msg.data).toBe("binary");
+    });
+
+    it("sends DataView", async () => {
+      await startServer((ws) => {
+        ws.on("message", (data, isBinary) => {
+          ws.send(isBinary ? "binary" : "text");
+        });
+      });
+
+      await client.connect(`ws://localhost:${port}`);
+      const buf = new ArrayBuffer(4);
+      await client.send(new DataView(buf));
+      const msg = await client.receive();
+      expect(msg.data).toBe("binary");
+    });
+
+    it("sends a subarray view correctly", async () => {
+      await startServer((ws) => {
+        ws.on("message", (data) => {
+          const bytes = Buffer.from(data as ArrayBuffer);
+          ws.send(bytes.join(","));
+        });
+      });
+
+      await client.connect(`ws://localhost:${port}`);
+      const full = new Uint8Array([10, 20, 30, 40, 50]);
+      const sub = full.subarray(1, 4); // [20, 30, 40]
+      await client.send(sub);
+      const msg = await client.receive();
+      expect(msg.data).toBe("20,30,40");
+    });
   });
 
   describe("close with valid custom codes", () => {
