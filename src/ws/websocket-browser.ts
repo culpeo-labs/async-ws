@@ -25,7 +25,24 @@ export function socketSend(
     return Promise.reject(new Error("WebSocket is not open"));
   }
   try {
-    socket.send(data);
+    if (ArrayBuffer.isView(data)) {
+      if (data.buffer instanceof SharedArrayBuffer) {
+        throw new Error(
+          "SharedArrayBuffer-backed views are not supported. " +
+            "Copy into a regular ArrayBuffer before sending.",
+        );
+      }
+      // Zero-copy: create a Uint8Array view over the same ArrayBuffer
+      socket.send(
+        new Uint8Array(
+          data.buffer as ArrayBuffer,
+          data.byteOffset,
+          data.byteLength,
+        ),
+      );
+    } else {
+      socket.send(data);
+    }
     return Promise.resolve();
   } catch (err) {
     return Promise.reject(err instanceof Error ? err : new Error(String(err)));

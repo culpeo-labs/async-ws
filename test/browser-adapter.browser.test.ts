@@ -62,6 +62,49 @@ describe("WebSocketClient (browser)", () => {
 
       await client.close();
     });
+
+    it("can send a subarray view with correct offset/length", async () => {
+      const client = new WebSocketClient();
+      await client.connect(`${WS_URL}?mode=echo`);
+
+      const full = new Uint8Array([10, 20, 30, 40, 50]);
+      const sub = full.subarray(1, 4);
+      await client.send(sub);
+      const msg = await client.receive();
+      expect(msg.binary).toBe(true);
+      const received = new Uint8Array(msg.data as ArrayBuffer);
+      expect(received).toEqual(new Uint8Array([20, 30, 40]));
+
+      await client.close();
+    });
+
+    it("can send other typed arrays (Int32Array)", async () => {
+      const client = new WebSocketClient();
+      await client.connect(`${WS_URL}?mode=echo`);
+
+      await client.send(new Int32Array([42]));
+      const msg = await client.receive();
+      expect(msg.binary).toBe(true);
+
+      await client.close();
+    });
+
+    it("rejects SharedArrayBuffer-backed views", async () => {
+      if (typeof SharedArrayBuffer === "undefined") {
+        return; // not available without cross-origin isolation
+      }
+
+      const client = new WebSocketClient();
+      await client.connect(`${WS_URL}?mode=echo`);
+
+      const sab = new SharedArrayBuffer(4);
+      const view = new Uint8Array(sab);
+      await expect(client.send(view)).rejects.toThrow(
+        /SharedArrayBuffer-backed views are not supported/,
+      );
+
+      await client.close();
+    });
   });
 
   describe("close", () => {
