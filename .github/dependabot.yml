@@ -14,6 +14,10 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    groups:
+      node-deps:
+        patterns:
+          - "*"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
