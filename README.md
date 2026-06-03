@@ -48,7 +48,7 @@ await client.connect("wss://echo.websocket.events");
 await client.send("hello");
 
 const message = await client.receive();
-console.log(message.data);   // string | ArrayBuffer
+console.log(message.data); // string | ArrayBuffer
 console.log(message.binary); // boolean
 
 await client.close();

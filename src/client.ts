@@ -45,6 +45,7 @@ export class WebSocketClient {
   private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
   private removePongListener: (() => void) | null = null;
+  private connectionId = 0;
   private readonly maxBufferSize: number;
   private readonly keepAliveConfig: ClientOptions["keepAlive"];
 
@@ -54,11 +55,17 @@ export class WebSocketClient {
       if (!supportsPing) {
         throw new Error(
           "keepAlive is not supported in browsers. " +
-          "The browser handles WebSocket ping/pong at the protocol level automatically.",
+            "The browser handles WebSocket ping/pong at the protocol level automatically.",
         );
       }
       if (options.keepAlive.interval <= 0) {
         throw new Error("keepAlive.interval must be greater than 0.");
+      }
+      if (
+        options.keepAlive.timeout !== undefined &&
+        options.keepAlive.timeout <= 0
+      ) {
+        throw new Error("keepAlive.timeout must be greater than 0.");
       }
       this.keepAliveConfig = options.keepAlive;
     }
@@ -99,7 +106,11 @@ export class WebSocketClient {
    * Resolves when the connection is open. Rejects on error.
    */
   connect(url: string | URL, options?: ConnectOptions): Promise<void> {
-    if (this.state !== "idle" && this.state !== "closed" && this.state !== "errored") {
+    if (
+      this.state !== "idle" &&
+      this.state !== "closed" &&
+      this.state !== "errored"
+    ) {
       return Promise.reject(
         new Error(`Cannot connect: client is in "${this.state}" state`),
       );
@@ -115,6 +126,7 @@ export class WebSocketClient {
 
     this.reset();
     this.state = "connecting";
+    const currentConnectionId = ++this.connectionId;
 
     return new Promise<void>((resolve, reject) => {
       try {
@@ -122,7 +134,8 @@ export class WebSocketClient {
         setBinaryType(this.socket);
       } catch (err) {
         this.state = "errored";
-        this.terminalError = err instanceof Error ? err : new Error(String(err));
+        this.terminalError =
+          err instanceof Error ? err : new Error(String(err));
         reject(this.terminalError);
         return;
       }
@@ -193,6 +206,10 @@ export class WebSocketClient {
         },
         // onClose
         (code, reason, wasClean) => {
+          // Ignore close events from a stale connection (e.g., after
+          // timeout/abort triggered a reconnect on the same client).
+          if (currentConnectionId !== this.connectionId) return;
+
           this.closeInfo = { code, reason, wasClean };
           this.state = "closed";
           this.cleanup();
@@ -208,14 +225,15 @@ export class WebSocketClient {
           // Only reject pending waiters once buffer is drained
           if (this.buffer.length === 0) {
             this.rejectAllWaiters(
-              new Error(
-                `WebSocket closed (code: ${code}, reason: ${reason})`,
-              ),
+              new Error(`WebSocket closed (code: ${code}, reason: ${reason})`),
             );
           }
         },
         // onError
         (error) => {
+          // Ignore error events from a stale connection.
+          if (currentConnectionId !== this.connectionId) return;
+
           this.terminalError = error;
           settle(() => {
             reject(error);
@@ -260,9 +278,7 @@ export class WebSocketClient {
     }
 
     if (this.state === "closed") {
-      return Promise.reject(
-        new Error("WebSocket is closed"),
-      );
+      return Promise.reject(new Error("WebSocket is closed"));
     }
 
     if (this.state !== "open") {
@@ -281,7 +297,11 @@ export class WebSocketClient {
    * Resolves when the close handshake completes.
    */
   close(code?: number, reason?: string): Promise<void> {
-    if (this.state === "closed" || this.state === "idle" || this.state === "errored") {
+    if (
+      this.state === "closed" ||
+      this.state === "idle" ||
+      this.state === "errored"
+    ) {
       return Promise.resolve();
     }
 
@@ -293,7 +313,9 @@ export class WebSocketClient {
       // Already closing — wait for the close event via a one-shot listener
       return new Promise<void>((resolve) => {
         if (this.socket) {
-          this.socket.addEventListener("close", () => resolve(), { once: true });
+          this.socket.addEventListener("close", () => resolve(), {
+            once: true,
+          });
         } else {
           resolve();
         }
@@ -385,6 +407,12 @@ export class WebSocketClient {
 
       socketPing(this.socket);
 
+      // Clear any existing pong watchdog before starting a new one
+      // to prevent multiple timers when timeout > interval.
+      if (this.pongTimer !== null) {
+        clearTimeout(this.pongTimer);
+      }
+
       this.pongTimer = setTimeout(() => {
         if (this.state === "open" && this.socket) {
           this.terminalError = new Error(
@@ -417,6 +445,7 @@ export class WebSocketClient {
       this.removeListeners();
       this.removeListeners = null;
     }
+    this.socket = null;
   }
 
   private reset(): void {
