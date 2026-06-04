@@ -7,6 +7,7 @@ import type {
 } from "./types";
 import {
   createWebSocket,
+  adoptSocket,
   socketSend,
   socketClose,
   socketTerminate,
@@ -69,6 +70,72 @@ export class WebSocketClient {
       }
       this.keepAliveConfig = options.keepAlive;
     }
+  }
+
+  /**
+   * Adopt an already-open WebSocket (e.g. from a `WebSocketServer` connection event).
+   *
+   * Returns a `WebSocketClient` in the "open" state, ready to send/receive.
+   * The client takes ownership of the socket lifecycle: calling `close()`
+   * will close the underlying socket.
+   *
+   * **Node.js only.** Throws in browser builds.
+   *
+   * Call this immediately in the server's `connection` handler to avoid
+   * missing messages:
+   *
+   * ```ts
+   * wss.on("connection", (socket) => {
+   *   const client = WebSocketClient.fromSocket(socket);
+   *   const msg = await client.receive();
+   * });
+   * ```
+   */
+  static fromSocket(
+    rawSocket: unknown,
+    options?: ClientOptions,
+  ): WebSocketClient {
+    const client = new WebSocketClient(options);
+    const socket = adoptSocket(rawSocket);
+
+    client.socket = socket;
+    setBinaryType(socket);
+    client.state = "open";
+    const currentConnectionId = ++client.connectionId;
+
+    client.removeListeners = attachListeners(
+      socket,
+      // onOpen — already open, won't fire
+      () => {},
+      // onMessage
+      (data, binary) => {
+        client.enqueueMessage({ data, binary });
+      },
+      // onClose
+      (code, reason, wasClean) => {
+        if (currentConnectionId !== client.connectionId) return;
+
+        client.closeInfo = { code, reason, wasClean };
+        client.state = "closed";
+        client.cleanup();
+
+        if (client.buffer.length === 0) {
+          client.rejectAllWaiters(
+            new Error(`WebSocket closed (code: ${code}, reason: ${reason})`),
+          );
+        }
+      },
+      // onError
+      (error) => {
+        if (currentConnectionId !== client.connectionId) return;
+
+        client.terminalError = error;
+        client.rejectAllWaiters(error);
+      },
+    );
+
+    client.startKeepAlive();
+    return client;
   }
 
   /** Current connection state. */

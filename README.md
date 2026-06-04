@@ -17,6 +17,7 @@
 - Configurable `maxBufferSize` with oldest-message eviction when full
 - Connect timeout and `AbortSignal` support
 - Keep-alive with automatic ping/pong (Node.js)
+- Server-side socket adoption with `fromSocket()` (Node.js)
 - Exposed WebSocket properties (`protocol`, `url`, `bufferedAmount`, `extensions`)
 - Clean close information via `lastCloseInfo`
 - TypeScript-first with bundled type definitions
@@ -133,7 +134,39 @@ readonly lastCloseInfo: WebSocketCloseInfo | null
 
 Returns close metadata from the most recent close event, or `null` if the socket has not closed yet.
 
-#### Methods
+#### Static Methods
+
+#### `fromSocket()`
+
+```ts
+static fromSocket(rawSocket: unknown, options?: ClientOptions): WebSocketClient
+```
+
+Wraps an already-open WebSocket into a `WebSocketClient` in the `"open"` state, ready to send and receive. Intended for server scenarios where a `WebSocketServer` hands you an established connection.
+
+**Node.js only.** Throws in browser builds.
+
+```ts
+import { WebSocketServer } from "ws";
+import { WebSocketClient } from "@culpeo/async-ws";
+
+const wss = new WebSocketServer({ port: 8080 });
+
+wss.on("connection", async (socket) => {
+  const client = WebSocketClient.fromSocket(socket);
+
+  for await (const msg of client) {
+    console.log("received:", msg.data);
+    await client.send("echo: " + msg.data);
+  }
+});
+```
+
+The client takes ownership of the socket lifecycle — calling `close()` will close the underlying socket. Call `fromSocket()` immediately in the `connection` handler to avoid missing messages.
+
+Accepts any WebSocket-compatible object (validated structurally, not via `instanceof`), so it works even when multiple copies of the `ws` package are installed.
+
+#### Instance Methods
 
 #### `connect()`
 
@@ -402,6 +435,34 @@ Both can be combined:
 await client.connect("wss://example.com/ws", {
   timeout: 10000,
   signal: controller.signal,
+});
+```
+
+## Server-Side Socket Adoption (Node.js)
+
+Use `fromSocket()` to wrap connections from a `WebSocketServer`:
+
+```ts
+import { WebSocketServer } from "ws";
+import { WebSocketClient } from "@culpeo/async-ws";
+
+const wss = new WebSocketServer({ port: 8080 });
+
+wss.on("connection", async (socket) => {
+  const client = WebSocketClient.fromSocket(socket);
+
+  const msg = await client.receive();
+  await client.send("got: " + msg.data);
+  await client.close();
+});
+```
+
+The same `ClientOptions` are supported:
+
+```ts
+const client = WebSocketClient.fromSocket(socket, {
+  maxBufferSize: 100,
+  keepAlive: { interval: 30000 },
 });
 ```
 

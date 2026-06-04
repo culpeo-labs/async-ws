@@ -710,4 +710,174 @@ describe("WebSocketClient", () => {
       await new Promise((r) => setTimeout(r, 100));
     });
   });
+
+  describe("fromSocket", () => {
+    it("wraps a server connection and starts in open state", async () => {
+      let serverSocket: WS | undefined;
+      await startServer((ws) => {
+        serverSocket = ws;
+      });
+
+      // Open a raw ws connection to trigger the server's connection event
+      const raw = new WS(`ws://localhost:${port}`);
+      await new Promise<void>((resolve) => raw.on("open", resolve));
+      // Wait for server to receive the connection
+      await new Promise((r) => setTimeout(r, 50));
+
+      const adopted = WebSocketClient.fromSocket(serverSocket!);
+      expect(adopted.readyState).toBe("open");
+
+      // Clean up
+      raw.close();
+      await adopted.close();
+    });
+
+    it("receives messages sent after adoption", async () => {
+      let serverSocket: WS | undefined;
+      await startServer((ws) => {
+        serverSocket = ws;
+      });
+
+      const raw = new WS(`ws://localhost:${port}`);
+      await new Promise<void>((resolve) => raw.on("open", resolve));
+      await new Promise((r) => setTimeout(r, 50));
+
+      const adopted = WebSocketClient.fromSocket(serverSocket!);
+
+      // Client sends a message to the server
+      raw.send("hello from client");
+      const msg = await adopted.receive();
+      expect(msg.data).toBe("hello from client");
+
+      raw.close();
+      await adopted.close();
+    });
+
+    it("sends messages to the peer", async () => {
+      let serverSocket: WS | undefined;
+      await startServer((ws) => {
+        serverSocket = ws;
+      });
+
+      const raw = new WS(`ws://localhost:${port}`);
+      await new Promise<void>((resolve) => raw.on("open", resolve));
+      await new Promise((r) => setTimeout(r, 50));
+
+      const adopted = WebSocketClient.fromSocket(serverSocket!);
+      await adopted.send("hello from server");
+
+      const received = await new Promise<string>((resolve) => {
+        raw.on("message", (data) => resolve(data.toString()));
+      });
+      expect(received).toBe("hello from server");
+
+      raw.close();
+      await adopted.close();
+    });
+
+    it("close() closes the adopted socket", async () => {
+      let serverSocket: WS | undefined;
+      await startServer((ws) => {
+        serverSocket = ws;
+      });
+
+      const raw = new WS(`ws://localhost:${port}`);
+      await new Promise<void>((resolve) => raw.on("open", resolve));
+      await new Promise((r) => setTimeout(r, 50));
+
+      const adopted = WebSocketClient.fromSocket(serverSocket!);
+
+      // Register listener before closing to avoid missing the event
+      const rawClosed = new Promise<void>((resolve) =>
+        raw.on("close", resolve),
+      );
+      await adopted.close(1000, "done");
+
+      expect(adopted.readyState).toBe("closed");
+      expect(adopted.lastCloseInfo?.code).toBe(1000);
+      expect(adopted.lastCloseInfo?.wasClean).toBe(true);
+
+      await rawClosed;
+    });
+
+    it("supports async iteration", async () => {
+      let serverSocket: WS | undefined;
+      await startServer((ws) => {
+        serverSocket = ws;
+      });
+
+      const raw = new WS(`ws://localhost:${port}`);
+      await new Promise<void>((resolve) => raw.on("open", resolve));
+      await new Promise((r) => setTimeout(r, 50));
+
+      const adopted = WebSocketClient.fromSocket(serverSocket!);
+
+      // Send messages then close
+      raw.send("a");
+      raw.send("b");
+      raw.send("c");
+      setTimeout(() => raw.close(1000, "done"), 100);
+
+      const messages: string[] = [];
+      for await (const msg of adopted) {
+        messages.push(msg.data as string);
+      }
+      expect(messages).toEqual(["a", "b", "c"]);
+    });
+
+    it("rejects non-WebSocket objects", () => {
+      expect(() => WebSocketClient.fromSocket({})).toThrow(
+        /WebSocket-compatible/,
+      );
+      expect(() => WebSocketClient.fromSocket(null)).toThrow(
+        /WebSocket-compatible/,
+      );
+      expect(() => WebSocketClient.fromSocket("ws://localhost")).toThrow(
+        /WebSocket-compatible/,
+      );
+    });
+
+    it("rejects sockets not in OPEN state", () => {
+      // Create a socket-like object in CONNECTING state
+      const fakeSocket = {
+        readyState: 0,
+        send: () => {},
+        close: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      };
+      expect(() => WebSocketClient.fromSocket(fakeSocket)).toThrow(
+        /OPEN state/,
+      );
+    });
+
+    it("accepts ClientOptions like maxBufferSize", async () => {
+      let serverSocket: WS | undefined;
+      await startServer((ws) => {
+        serverSocket = ws;
+      });
+
+      const raw = new WS(`ws://localhost:${port}`);
+      await new Promise<void>((resolve) => raw.on("open", resolve));
+      await new Promise((r) => setTimeout(r, 50));
+
+      const adopted = WebSocketClient.fromSocket(serverSocket!, {
+        maxBufferSize: 2,
+      });
+
+      // Send 3 messages without consuming — oldest should be dropped
+      raw.send("1");
+      raw.send("2");
+      raw.send("3");
+      await new Promise((r) => setTimeout(r, 50));
+
+      const m1 = await adopted.receive();
+      const m2 = await adopted.receive();
+      expect(m1.data).toBe("2");
+      expect(m2.data).toBe("3");
+
+      raw.close();
+      await adopted.close();
+    });
+  });
 });
