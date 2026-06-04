@@ -119,6 +119,29 @@ export function attachPongListener(
   return () => socket.off("pong", handler);
 }
 
+export function adoptSocket(rawSocket: unknown): Socket {
+  const s = rawSocket as Record<string, unknown>;
+  if (
+    !s ||
+    typeof s !== "object" ||
+    typeof s.send !== "function" ||
+    typeof s.close !== "function" ||
+    typeof s.addEventListener !== "function" ||
+    typeof s.removeEventListener !== "function"
+  ) {
+    throw new Error(
+      "Expected a WebSocket-compatible object (must have send, close, addEventListener, removeEventListener).",
+    );
+  }
+  if ((s as { readyState?: unknown }).readyState !== WS.OPEN) {
+    throw new Error(
+      "Socket must be in the OPEN state to be adopted. " +
+        "Call fromSocket() immediately in the server's connection handler.",
+    );
+  }
+  return rawSocket as Socket;
+}
+
 export const supportsPing = true;
 
 export const OPEN = WS.OPEN;

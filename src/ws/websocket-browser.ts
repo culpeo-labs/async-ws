@@ -109,6 +109,13 @@ export function attachPongListener(
   return () => {};
 }
 
+export function adoptSocket(_rawSocket: unknown): Socket {
+  throw new Error(
+    "fromSocket() is not supported in browsers. " +
+      "Browsers cannot accept server-side WebSocket connections.",
+  );
+}
+
 export const supportsPing = false;
 
 export const OPEN = _WS.OPEN;
