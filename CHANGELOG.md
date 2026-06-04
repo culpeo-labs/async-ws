@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0
+
+### Minor Changes
+
+- 89a662e: ### Adopt existing WebSocket connections
+
+  New static method `WebSocketClient.fromSocket(socket, options?)` wraps an already-open WebSocket (e.g. from a `WebSocketServer` connection event) into a ready-to-use `WebSocketClient`. Node.js only.
+
 ## 1.0.0
 
 ### Major Changes
