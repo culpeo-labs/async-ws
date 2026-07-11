@@ -312,12 +312,7 @@ Represents close metadata captured from the underlying socket.
 
 ```ts
 type WebSocketState =
-  | "idle"
-  | "connecting"
-  | "open"
-  | "closing"
-  | "closed"
-  | "errored";
+  "idle" | "connecting" | "open" | "closing" | "closed" | "errored";
 ```
 
 Represents the client lifecycle state.

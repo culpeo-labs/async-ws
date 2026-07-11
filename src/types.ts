@@ -63,9 +63,4 @@ export interface KeepAliveOptions {
 }
 
 export type WebSocketState =
-  | "idle"
-  | "connecting"
-  | "open"
-  | "closing"
-  | "closed"
-  | "errored";
+  "idle" | "connecting" | "open" | "closing" | "closed" | "errored";
