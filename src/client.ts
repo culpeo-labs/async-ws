@@ -16,7 +16,6 @@ import {
   supportsPing,
   setBinaryType,
   attachListeners,
-  OPEN,
   type Socket,
 } from "./ws/websocket";
 
