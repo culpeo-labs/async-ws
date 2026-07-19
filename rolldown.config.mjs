@@ -14,7 +14,9 @@ const browserBuild = {
   platform: "browser",
   plugins: [
     alias({
-      entries: [{ find: "./ws/websocket", replacement: "./ws/websocket-browser" }],
+      entries: [
+        { find: "./ws/websocket", replacement: "./ws/websocket-browser" },
+      ],
     }),
   ],
   transform: { target: "es2020" },
