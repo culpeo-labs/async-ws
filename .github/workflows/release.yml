@@ -3,6 +3,14 @@ name: Release
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "!.changeset/**/*.md"
+      - "docs/**"
+      - ".vscode/**"
+      - ".devcontainer/**"
+      - ".gitignore"
+      - "LICENSE"
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 

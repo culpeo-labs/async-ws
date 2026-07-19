@@ -107,7 +107,7 @@ describe("WebSocketClient", () => {
       await client.connect(`ws://localhost:${port}`);
 
       // Code 999 is invalid (must be 1000 or 3000-4999)
-      await expect(client.close(999)).rejects.toThrow();
+      await expect(client.close(999)).rejects.toThrow(/Invalid close code/);
     });
   });
 
@@ -118,7 +118,7 @@ describe("WebSocketClient", () => {
       });
 
       await client.connect(`ws://localhost:${port}`);
-      await expect(client.receive()).rejects.toThrow();
+      await expect(client.receive()).rejects.toThrow(/WebSocket closed/);
 
       expect(client.readyState).toBe("closed");
       expect(client.lastCloseInfo).not.toBeNull();
@@ -163,10 +163,13 @@ describe("WebSocketClient", () => {
 
       // close() must resolve, not hang
       await client.close();
+      expect(client.readyState).toBe("closed");
     });
 
     it("rejects connect on unreachable port", async () => {
-      await expect(client.connect("ws://localhost:1")).rejects.toThrow();
+      await expect(client.connect("ws://localhost:1")).rejects.toThrow(
+        /^WebSocket transport error/,
+      );
     });
 
     it("rejects send when not open", async () => {
@@ -209,7 +212,7 @@ describe("WebSocketClient", () => {
       const msg = await client.receive();
       expect(msg.data).toBe("last-msg");
 
-      await expect(client.receive()).rejects.toThrow();
+      await expect(client.receive()).rejects.toThrow(/WebSocket is closed/);
     });
 
     it("drops oldest messages when maxBufferSize is exceeded", async () => {

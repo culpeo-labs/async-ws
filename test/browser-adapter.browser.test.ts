@@ -121,7 +121,7 @@ describe("WebSocketClient (browser)", () => {
       const client = new WebSocketClient();
       await client.connect(`${WS_URL}?mode=close-immediately`);
 
-      await expect(client.receive()).rejects.toThrow();
+      await expect(client.receive()).rejects.toThrow(/WebSocket closed/);
       expect(client.readyState).toBe("closed");
       expect(client.lastCloseInfo).not.toBeNull();
     });
@@ -167,7 +167,7 @@ describe("WebSocketClient (browser)", () => {
       const msg = await client.receive();
       expect(msg.data).toBe("last-msg");
 
-      await expect(client.receive()).rejects.toThrow();
+      await expect(client.receive()).rejects.toThrow(/WebSocket is closed/);
     });
 
     it("respects maxBufferSize", async () => {

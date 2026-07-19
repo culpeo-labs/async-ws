@@ -1,0 +1,11 @@
+export default {
+  $schema: "./node_modules/oxlint/configuration_schema.json",
+  plugins: ["typescript", "unicorn", "oxc", "vitest"],
+  categories: {
+    correctness: "error",
+  },
+  rules: {},
+  env: {
+    builtin: true,
+  },
+};
