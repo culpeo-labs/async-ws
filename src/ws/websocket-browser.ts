@@ -71,7 +71,7 @@ export function attachListeners(
   };
   const handleClose = (event: CloseEvent) =>
     onClose(event.code, event.reason, event.wasClean);
-  const handleError = () => onError(new Error("WebSocket error"));
+  const handleError = () => onError(new Error("WebSocket transport error"));
 
   socket.addEventListener("open", handleOpen);
   socket.addEventListener("message", handleMessage);

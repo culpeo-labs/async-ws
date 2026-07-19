@@ -38,6 +38,37 @@ export function getReadyState(socket: Socket): number {
   return socket.readyState;
 }
 
+/**
+ * Normalize a `ws` error event into an `Error` with a stable, non-empty,
+ * prefixed message. The underlying error's `message` is not guaranteed to be
+ * populated consistently across platforms/Node versions — e.g. Node's Happy
+ * Eyeballs algorithm can surface an `AggregateError` whose top-level
+ * `message` is empty even though its nested `errors` have details.
+ */
+function toTransportError(event: WSErrorEvent): Error {
+  const err: unknown = event.error;
+  let detail = event.message;
+
+  if (!detail && err instanceof Error) {
+    detail = err.message;
+  }
+
+  if (!detail && err && typeof err === "object" && "errors" in err) {
+    const nested = (err as { errors?: unknown }).errors;
+    if (Array.isArray(nested) && nested.length > 0) {
+      detail = nested
+        .map((e) => (e instanceof Error ? e.message : String(e)))
+        .join("; ");
+    }
+  }
+
+  return new Error(
+    detail
+      ? `WebSocket transport error: ${detail}`
+      : "WebSocket transport error",
+  );
+}
+
 export function setBinaryType(socket: Socket): void {
   socket.binaryType = "arraybuffer";
 }
@@ -78,8 +109,7 @@ export function attachListeners(
   };
   const handleClose = (event: WSCloseEvent) =>
     onClose(event.code, event.reason, event.wasClean);
-  const handleError = (event: WSErrorEvent) =>
-    onError(new Error(event.message));
+  const handleError = (event: WSErrorEvent) => onError(toTransportError(event));
 
   socket.addEventListener("open", handleOpen);
   socket.addEventListener("message", handleMessage);

@@ -168,7 +168,7 @@ describe("WebSocketClient", () => {
 
     it("rejects connect on unreachable port", async () => {
       await expect(client.connect("ws://localhost:1")).rejects.toThrow(
-        /ECONNREFUSED|connect/i,
+        /^WebSocket transport error/,
       );
     });
 

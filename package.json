@@ -28,7 +28,7 @@
     "url": "https://github.com/culpeo-labs/async-ws/issues"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "sideEffects": false,
   "main": "./dist/cjs/index.cjs",
