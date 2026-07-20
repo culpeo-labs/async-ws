@@ -1,6 +1,6 @@
 {
   "name": "@culpeo/async-ws",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Promise-first WebSocket client for Node.js and browsers",
   "author": "Gerardo Lecaros",
   "license": "MIT",
