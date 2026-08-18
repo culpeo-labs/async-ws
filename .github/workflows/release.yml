@@ -48,7 +48,7 @@ jobs:
       - run: npm test
 
       - name: Create Release PR or Publish
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
           publish: npm run release
           title: "chore: version packages"
