@@ -50,8 +50,8 @@ jobs:
       - name: Create Release PR or Publish
         uses: changesets/action@v2
         with:
-          publish: npm run release
-          title: "chore: version packages"
-          commit: "chore: version packages"
+          publish-script: npm run release
+          pr-title: "Version Packages"
+          commit-message: "Version Packages"
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
