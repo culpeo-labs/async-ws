@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1
+
+### Patch Changes
+
+- deaafde: Updating dependencies (`ws` from 8.21.1 to 8.21.3)
+
 ## 1.2.0
 
 ### Minor Changes
